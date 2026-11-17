@@ -1,3 +1,8 @@
 .DS_Store
 __pycache__/
 data.js
+export/config.json
+export/.cache/
+*.csv
+bin/
+obj/

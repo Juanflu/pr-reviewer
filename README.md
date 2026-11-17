@@ -2,12 +2,33 @@
 
 Web estática (sin dependencias ni servidor) para explorar el CSV de métricas de PRs de Azure DevOps.
 
+## Exportar datos desde Azure DevOps
+
+`export/ExportPullRequests.cs` genera `PullRequests_Metrics.csv` con las PRs y, para cada una, nº de commits,
+archivos cambiados y líneas añadidas/borradas (sin contar archivos generados). Requiere **.NET 10**.
+
+1. Crea un PAT en Azure DevOps con alcance **Code > Read**.
+2. Copia `export/config.example.json` a `export/config.json` (ignorado por git) y rellena organización,
+   proyectos, autores y, si quieres, los patrones de `excludePatterns`.
+3. Desde la raíz del repo:
+
+   ```sh
+   export AZDO_PAT=xxxxxxxx
+   dotnet run export/ExportPullRequests.cs
+   ```
+
+Los detalles de cada PR se guardan en `export/.cache/` (ignorado por git): las siguientes ejecuciones solo
+consultan las PRs nuevas o activas. Si cambias `excludePatterns`, se recalcula todo.
+
+Las líneas se obtienen con la API `FileDiffs` (la que usa la web de Azure DevOps, no documentada); si no
+está disponible, el script descarga cada archivo antes y después del cambio y compara sus líneas.
+
 ## Uso
 
 1. Genera los datos a partir del CSV (solo necesita `python3`):
 
    ```sh
-   python3 build_data.py                      # usa ~/Downloads/PullRequests_Metrics.csv
+   python3 build_data.py                      # usa ./PullRequests_Metrics.csv o ~/Downloads/PullRequests_Metrics.csv
    python3 build_data.py ruta/a/otro.csv      # o un CSV concreto
    ```
 
@@ -34,7 +55,8 @@ navegador y se guarda en ese navegador para no tener que cargarlo cada vez ("Qui
 - Detalle de PRs ordenable y paginado, con enlace a Azure DevOps.
 - Pestaña **Comparar periodos**: A frente a B (mismo tramo del año, años completos, antes/después de una fecha
   o fechas libres) con KPIs y variación, PRs por autor activo y mes, evolución mes a mes superpuesta,
-  distribución del tiempo en revisión por tramos y tabla por autor.
+  distribución del tiempo en revisión por tramos y tabla por autor. Si el CSV trae tamaño de PR: medianas de
+  líneas/archivos/commits, horas de revisión por 100 líneas y tiempo de revisión por tramo de tamaño (XS–XL).
 - Los filtros se guardan en la URL (`#...`), así que puedes guardar o compartir una vista.
 
 Notas: el tiempo en revisión es `HoursOpen` (horas naturales, incluye noches y fines de semana). Las PRs activas cuentan en el nº de PRs pero no en las métricas de tiempo.

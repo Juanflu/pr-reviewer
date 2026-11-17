@@ -151,6 +151,9 @@
   .tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
   body.view-compare .explore-only, body.view-explore .compare-only { display: none !important; }
   .explore-group { display: contents; }
+  body:not(.has-size) .size-only, body.has-size .no-size-only { display: none !important; }
+  .add { color: var(--ok); }
+  .del { color: var(--danger); }
   .periods { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-top: 12px; }
   .period { border-left: 4px solid var(--cmp-a); padding: 2px 0 2px 12px; }
   .period.b { border-left-color: var(--accent); }
@@ -287,7 +290,7 @@
           <span><i style="background:var(--cmp-a)"></i><span id="legA">A</span></span>
           <span><i style="background:var(--accent)"></i><span id="legB">B</span></span>
           <div class="seg" id="cmpMetric">
-            <button data-v="cum">PRs acumuladas</button><button data-v="month">PRs por mes</button><button data-v="median">Mediana h</button>
+            <button data-v="cum">PRs acumuladas</button><button data-v="month">PRs por mes</button><button data-v="median">Mediana h</button><button data-v="size" class="size-only">Mediana líneas</button>
           </div>
         </div>
       </div>
@@ -305,6 +308,16 @@
       <div id="dist"></div>
     </section>
 
+    <section class="card size-only">
+      <div class="card-head">
+        <h2>Tiempo de revisión según tamaño</h2>
+        <span class="muted small">Tamaño = líneas añadidas + borradas</span>
+      </div>
+      <div class="table-wrap"><table id="sizeTable"></table></div>
+      <div class="note">Si las PRs de B se concentran en tramos grandes, parte de la subida del tiempo de revisión se explica por el tamaño.
+        Si a igual tamaño la mediana también sube, el cambio está en el proceso de revisión.</div>
+    </section>
+
     <section class="card">
       <div class="card-head"><h2>Por autor</h2></div>
       <div class="table-wrap"><table id="authorTable"></table></div>
@@ -316,7 +329,8 @@
       <ul class="howto">
         <li><b>Correlación no es causalidad:</b> la IA es uno de varios cambios entre periodos (equipo, proyectos, tipo de trabajo).</li>
         <li><b>Horas naturales:</b> el tiempo en revisión va de la creación al cierre e incluye noches y fines de semana.</li>
-        <li><b>Sin tamaño de PR:</b> el CSV no trae líneas cambiadas; si con IA las PRs son más grandes, es normal que tarden más en revisarse.</li>
+        <li class="no-size-only"><b>Sin tamaño de PR:</b> el CSV no trae líneas cambiadas; si con IA las PRs son más grandes, es normal que tarden más en revisarse. Genera el CSV con <code>export/ExportPullRequests.cs</code> para añadirlo.</li>
+        <li class="size-only"><b>Tamaño de PR:</b> líneas añadidas + borradas frente a la base común, sin contar archivos generados (lockfiles, migraciones, <code>*.Designer.cs</code>…; configurable en <code>excludePatterns</code>).</li>
         <li><b>Mediana y P90</b> son más fiables que la media, que se dispara con unas pocas PRs olvidadas.</li>
         <li><b>PRs por autor activo y mes</b> descuenta los cambios de tamaño del equipo (autor activo = al menos una PR en el periodo).</li>
       </ul>
@@ -388,6 +402,7 @@
   // Origen de los datos, por prioridad: data.js (local) > CSV guardado en este navegador > pantalla de carga.
   const STORE_KEY = "pr-metrics-csv";
   let ROWS = [], MAX_DAY = "", MIN_DAY = "", fromDataJs = false;
+  let HAS_SIZE = false; // el CSV trae commits/archivos/líneas por PR
 
   function prepare(rows) {
     return rows.map(r => ({
@@ -395,7 +410,13 @@
       day: r.created ? r.created.slice(0, 10) : "",
       month: r.created ? r.created.slice(0, 7) : "",
       titleLC: (r.title || "").toLowerCase(),
-      hasTime: r.status !== "active" && typeof r.hours === "number"
+      hasTime: r.status !== "active" && typeof r.hours === "number",
+      commits: r.commits ?? null,
+      files: r.files ?? null,
+      added: r.added ?? null,
+      deleted: r.deleted ?? null,
+      // Tamaño de la PR = líneas añadidas + borradas (solo si el CSV trae esas columnas)
+      size: r.added != null && r.deleted != null ? r.added + r.deleted : null
     }));
   }
 
@@ -421,6 +442,8 @@
 
   const COLS = { project: "Project", repo: "Repository", id: "PullRequestId", title: "Title", status: "Status",
     author: "Author", branch: "TargetBranch", created: "CreationDate", closed: "ClosedDate", hours: "HoursOpen", url: "Url" };
+  // Columnas opcionales: las genera export/ExportPullRequests.cs; los CSV antiguos no las tienen
+  const OPT_COLS = { commits: "CommitCount", files: "FilesChanged", added: "LinesAdded", deleted: "LinesDeleted" };
 
   function rowsFromCSV(text) {
     const table = parseCSV(text);
@@ -428,13 +451,15 @@
     const header = table[0].map(h => h.trim());
     const missing = Object.values(COLS).filter(c => !header.includes(c));
     if (missing.length) throw new Error("Faltan columnas en el CSV: " + missing.join(", "));
-    const idx = Object.fromEntries(Object.entries(COLS).map(([k, c]) => [k, header.indexOf(c)]));
+    const idx = Object.fromEntries(Object.entries({ ...COLS, ...OPT_COLS }).map(([k, c]) => [k, header.indexOf(c)]));
     return table.slice(1).map(cells => {
-      const get = k => (cells[idx[k]] || "").trim();
+      const get = k => (idx[k] >= 0 ? cells[idx[k]] || "" : "").trim();
+      const int = k => { const v = get(k); return /^\d+$/.test(v) ? Number(v) : null; };
       const h = parseFloat(get("hours"));
       return { project: get("project"), repo: get("repo"), id: get("id"), title: get("title"), status: get("status"),
         author: get("author"), branch: get("branch"), created: get("created") || null, closed: get("closed") || null,
-        hours: isNaN(h) ? null : h, url: get("url") };
+        hours: isNaN(h) ? null : h, url: get("url"),
+        commits: int("commits"), files: int("files"), added: int("added"), deleted: int("deleted") };
     });
   }
 
@@ -458,7 +483,9 @@
     if (h == null || isNaN(h)) return "—";
     return h > 48 ? `${nf1.format(h)} h · ${nf1.format(h / 24)} d` : `${nf1.format(h)} h`;
   }
-  const fmtMonth = key => monthFmt.format(new Date(key + "-01T00:00:00Z"));
+  const fmtNum = v => (v == null || isNaN(v) ? "—" : nf0.format(Math.round(v)));
+  const fmtLines = v => (v == null || isNaN(v) ? "—" : `${nf0.format(Math.round(v))} líneas`);
+  const fmtMonth = key =>monthFmt.format(new Date(key + "-01T00:00:00Z"));
   const fmtDay = key => dayFmt.format(new Date(key + "T00:00:00Z"));
 
   // ---------- Estadísticas ----------
@@ -467,8 +494,9 @@
     const pos = (sorted.length - 1) * q, lo = Math.floor(pos), hi = Math.ceil(pos);
     return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
   }
+  const sortedOf = (rows, f) => rows.map(f).filter(v => v != null && !isNaN(v)).sort((a, b) => a - b);
   function stats(rows) {
-    const hrs = rows.filter(r => r.hasTime).map(r => r.hours).sort((a, b) => a - b);
+    const hrs = sortedOf(rows.filter(r => r.hasTime), r => r.hours);
     const abandoned = rows.filter(r => r.status === "abandoned").length;
     return {
       count: rows.length,
@@ -476,7 +504,13 @@
       mean: hrs.length ? hrs.reduce((s, h) => s + h, 0) / hrs.length : null,
       median: quantile(hrs, 0.5),
       p90: quantile(hrs, 0.9),
-      abandonedPct: rows.length ? abandoned / rows.length : null
+      abandonedPct: rows.length ? abandoned / rows.length : null,
+      // Tamaño (null si el CSV no trae las columnas)
+      sizeMedian: quantile(sortedOf(rows, r => r.size), 0.5),
+      filesMedian: quantile(sortedOf(rows, r => r.files), 0.5),
+      commitsMedian: quantile(sortedOf(rows, r => r.commits), 0.5),
+      // Horas de revisión por cada 100 líneas: mediana por PR (solo PRs cerradas con tamaño > 0)
+      per100: quantile(sortedOf(rows.filter(r => r.hasTime && r.size > 0), r => (r.hours / r.size) * 100), 0.5)
     };
   }
 
@@ -541,6 +575,8 @@
       ["P90 en revisión", fmtHours(s.p90), "el 90% se cierra antes"],
       ["Abandonadas", s.abandonedPct == null ? "—" : pct.format(s.abandonedPct), "sobre las PRs filtradas"]
     ];
+    if (HAS_SIZE) items.push(["Mediana de líneas cambiadas", fmtLines(s.sizeMedian),
+      `${fmtNum(s.filesMedian)} archivos · ${fmtNum(s.commitsMedian)} commits (medianas)`]);
     $("kpis").innerHTML = items.map(([l, v, sub]) =>
       `<div class="kpi"><div class="label">${l}</div><div class="value">${v}</div><div class="sub">${sub}</div></div>`).join("");
   }
@@ -681,6 +717,7 @@
       th("median", "Mediana", state.gs, state.gd, true, "data-gs") +
       th("p90", "P90", state.gs, state.gd, true, "data-gs") +
       th("abandonedPct", "% abandonadas", state.gs, state.gd, true, "data-gs") +
+      (HAS_SIZE ? th("sizeMedian", "Mediana líneas", state.gs, state.gd, true, "data-gs") : "") +
       "</tr></thead>";
     const body = list.length ? list.map(g => `<tr data-k="${esc(g.k)}">
         <td>${esc(key === "month" ? fmtMonth(g.k) : g.k)}</td>
@@ -689,7 +726,8 @@
         <td class="num">${fmtHours(g.median)}</td>
         <td class="num">${fmtHours(g.p90)}</td>
         <td class="num">${g.abandonedPct == null ? "—" : pct.format(g.abandonedPct)}</td>
-      </tr>`).join("") : `<tr><td colspan="6" class="empty">Sin datos para estos filtros</td></tr>`;
+        ${HAS_SIZE ? `<td class="num">${fmtNum(g.sizeMedian)}</td>` : ""}
+      </tr>`).join("") : `<tr><td colspan="7" class="empty">Sin datos para estos filtros</td></tr>`;
     $("groupTable").innerHTML = head + "<tbody>" + body + "</tbody>";
   }
 
@@ -706,7 +744,11 @@
 
     const h = (k, l, n) => th(k, l, state.ds, state.dd, n, "data-ds");
     const head = "<thead><tr>" + h("id", "ID", true) + h("title", "Título") + h("author", "Autor") + h("repo", "Repositorio") +
-      h("branch", "Rama") + h("status", "Estado") + h("created", "Creada") + h("closed", "Cerrada") + h("hours", "En revisión", true) + "</tr></thead>";
+      h("branch", "Rama") + h("status", "Estado") + h("created", "Creada") + h("closed", "Cerrada") + h("hours", "En revisión", true) +
+      (HAS_SIZE ? h("files", "Archivos", true) + h("size", "Líneas +/−", true) : "") + "</tr></thead>";
+    const sizeCells = r => !HAS_SIZE ? "" : `
+        <td class="num">${fmtNum(r.files)}</td>
+        <td class="num">${r.size == null ? "—" : `<span class="add">+${nf0.format(r.added)}</span> <span class="del">−${nf0.format(r.deleted)}</span>`}</td>`;
     const body = slice.length ? slice.map(r => `<tr>
         <td class="num">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.id)}</a>` : esc(r.id)}</td>
         <td class="title">${esc(r.title)}</td>
@@ -716,8 +758,8 @@
         <td><span class="pill ${esc(r.status)}">${esc(r.status)}</span></td>
         <td>${esc((r.created || "").slice(0, 16))}</td>
         <td>${esc((r.closed || "—").slice(0, 16))}</td>
-        <td class="num">${r.status === "active" ? `<span class="muted">${fmtHours(r.hours)} (abierta)</span>` : fmtHours(r.hours)}</td>
-      </tr>`).join("") : `<tr><td colspan="9" class="empty">Sin PRs para estos filtros</td></tr>`;
+        <td class="num">${r.status === "active" ? `<span class="muted">${fmtHours(r.hours)} (abierta)</span>` : fmtHours(r.hours)}</td>${sizeCells(r)}
+      </tr>`).join("") : `<tr><td colspan="11" class="empty">Sin PRs para estos filtros</td></tr>`;
     $("detailTable").innerHTML = head + "<tbody>" + body + "</tbody>";
     $("detailCount").textContent = `${nf0.format(list.length)} PRs`;
     $("pager").innerHTML = pages > 1
@@ -787,12 +829,13 @@
     return authors ? rows.length / authors / months : null;
   }
 
-  // better: 1 = subir es bueno, -1 = bajar es bueno. kind "pp" = diferencia en puntos porcentuales.
+  // better: 1 = subir es bueno, -1 = bajar es bueno, 0 = neutro (sin color).
+  // kind "pp" = diferencia en puntos porcentuales.
   function delta(a, b, better, kind) {
     if (a == null || b == null || (kind !== "pp" && !a)) return `<span class="delta">—</span>`;
     const d = kind === "pp" ? (b - a) * 100 : ((b - a) / a) * 100;
     const txt = `${d >= 0 ? "+" : ""}${nf1.format(d)}${kind === "pp" ? " pp" : " %"}`;
-    const cls = Math.abs(d) < 0.05 ? "" : (d > 0) === (better > 0) ? "good" : "bad";
+    const cls = !better || Math.abs(d) < 0.05 ? "" : (d > 0) === (better > 0) ? "good" : "bad";
     return `<span class="delta ${cls}">${txt}</span>`;
   }
 
@@ -809,6 +852,13 @@
     ];
     // Si no hay ninguna abandonada (p. ej. el CSV solo trae completadas), la tarjeta no aporta nada
     if (!sa.abandonedPct && !sb.abandonedPct) items.pop();
+    if (HAS_SIZE) items.push(
+      // Que las PRs sean más grandes no es bueno ni malo en sí: sin color
+      ["Mediana de líneas cambiadas", sa.sizeMedian, sb.sizeMedian, fmtLines, 0],
+      ["Mediana de archivos", sa.filesMedian, sb.filesMedian, fmtNum, 0],
+      ["Mediana de commits", sa.commitsMedian, sb.commitsMedian, fmtNum, 0],
+      ["Horas de revisión por 100 líneas", sa.per100, sb.per100, fmtHours, -1]
+    );
     $("cmpKpis").innerHTML = items.map(([label, a, b, f, better, kind]) => `
       <div class="kpi cmp-kpi">
         <div class="label">${label}</div>
@@ -823,7 +873,11 @@
     const buckets = Array.from({ length: Math.max(0, n) }, () => []);
     for (const r of rows) { const i = monthIdx(r.day, p[0]); if (i >= 0 && i < n) buckets[i].push(r); }
     let acc = 0;
-    return buckets.map(b => { acc += b.length; return { month: b.length, cum: acc, median: stats(b).median }; });
+    return buckets.map(b => {
+      acc += b.length;
+      const s = stats(b);
+      return { month: b.length, cum: acc, median: s.median, size: s.sizeMedian };
+    });
   }
 
   function renderCmpChart(ra, rb, p) {
@@ -845,7 +899,7 @@
       const d = toDate(p.b[0]); d.setUTCMonth(d.getUTCMonth() + i);
       return monthShort.format(d).replace(".", "");
     };
-    const fmtV = v => (v == null ? "—" : metric === "median" ? fmtHours(v) : nf0.format(v));
+    const fmtV = v => (v == null ? "—" : metric === "median" ? fmtHours(v) : metric === "size" ? fmtLines(v) : nf0.format(v));
     const fmtAxis = v => (metric === "median" ? nf0.format(v) + "h" : nf0.format(v));
 
     const maxV = Math.max(1, ...A.concat(B).filter(v => v != null));
@@ -879,7 +933,7 @@
       cursor.setAttribute("x1", x(i)); cursor.setAttribute("x2", x(i));
       const a = A[i], b = B[i];
       tip.innerHTML = `<b>${esc(label(i))}</b><br>A: ${fmtV(a)}<br>B: ${fmtV(b)}` +
-        (a != null && b != null ? `<br>Δ ${delta(a, b, metric === "median" ? -1 : 1).replace(/<[^>]+>/g, "")}` : "");
+        (a != null && b != null ? `<br>Δ ${delta(a, b, metric === "median" ? -1 : metric === "size" ? 0 : 1).replace(/<[^>]+>/g, "")}` : "");
       tip.style.display = "block";
       const wrap = $("cmpWrap").getBoundingClientRect();
       let left = e.clientX - wrap.left + 12;
@@ -907,6 +961,31 @@
       </div>`).join("");
   }
 
+  // Tramos de tamaño (líneas añadidas + borradas). Permite ver si a igual tamaño se revisa más lento.
+  const SIZE_BUCKETS = [["XS", "≤ 10 líneas", 0, 10], ["S", "11–100", 11, 100], ["M", "101–400", 101, 400],
+    ["L", "401–1.000", 401, 1000], ["XL", "> 1.000", 1001, Infinity]];
+  function renderSizeTable(ra, rb) {
+    const sized = rows => rows.filter(r => r.size != null);
+    const sa = sized(ra), sb = sized(rb);
+    const rowsOf = (rows, lo, hi) => rows.filter(r => r.size >= lo && r.size <= hi);
+    const head = "<thead><tr><th>Tamaño</th><th class=\"num\">% PRs A</th><th class=\"num\">% PRs B</th>" +
+      "<th class=\"num\">Mediana A</th><th class=\"num\">Mediana B</th><th class=\"num\">Δ mediana</th></tr></thead>";
+    const body = SIZE_BUCKETS.map(([code, label, lo, hi]) => {
+      const a = rowsOf(sa, lo, hi), b = rowsOf(sb, lo, hi);
+      const ma = stats(a).median, mb = stats(b).median;
+      const share = (n, total) => (total ? pct.format(n / total) : "—");
+      return `<tr>
+        <td><b>${code}</b> <span class="muted">${label}</span></td>
+        <td class="num">${share(a.length, sa.length)} <span class="muted small">(${nf0.format(a.length)})</span></td>
+        <td class="num">${share(b.length, sb.length)} <span class="muted small">(${nf0.format(b.length)})</span></td>
+        <td class="num">${fmtHours(ma)}</td>
+        <td class="num">${fmtHours(mb)}</td>
+        <td class="num">${delta(ma, mb, -1)}</td>
+      </tr>`;
+    }).join("");
+    $("sizeTable").innerHTML = head + "<tbody>" + body + "</tbody>";
+  }
+
   function renderAuthors(ra, rb) {
     const by = (rows) => { const m = new Map(); for (const r of rows) (m.get(r.author) || m.set(r.author, []).get(r.author)).push(r); return m; };
     const ma = by(ra), mb = by(rb);
@@ -915,12 +994,14 @@
       const a = ma.get(k) || [], b = mb.get(k) || [];
       const sa = stats(a), sb = stats(b);
       return { k, a: a.length, b: b.length, dn: a.length ? (b.length - a.length) / a.length : null,
-        ma: sa.median, mb: sb.median, dm: sa.median && sb.median != null ? (sb.median - sa.median) / sa.median : null };
+        ma: sa.median, mb: sb.median, dm: sa.median && sb.median != null ? (sb.median - sa.median) / sa.median : null,
+        la: sa.sizeMedian, lb: sb.sizeMedian };
     });
     list.sort((x, y) => cmp(x[state.as], y[state.as], state.ad) || cmp(x.k, y.k, "asc"));
     const h = (k, l, num) => th(k, l, state.as, state.ad, num, "data-as");
     const head = "<thead><tr>" + h("k", "Autor") + h("a", "PRs A", true) + h("b", "PRs B", true) + h("dn", "Δ PRs", true) +
-      h("ma", "Mediana A", true) + h("mb", "Mediana B", true) + h("dm", "Δ mediana", true) + "</tr></thead>";
+      h("ma", "Mediana A", true) + h("mb", "Mediana B", true) + h("dm", "Δ mediana", true) +
+      (HAS_SIZE ? h("la", "Líneas A", true) + h("lb", "Líneas B", true) : "") + "</tr></thead>";
     const body = list.length ? list.map(g => `<tr>
         <td>${esc(g.k)}${!g.a ? '<span class="badge">nuevo en B</span>' : !g.b ? '<span class="badge">sin PRs en B</span>' : ""}</td>
         <td class="num">${nf0.format(g.a)}</td>
@@ -929,7 +1010,8 @@
         <td class="num">${fmtHours(g.ma)}</td>
         <td class="num">${fmtHours(g.mb)}</td>
         <td class="num">${delta(g.ma, g.mb, -1)}</td>
-      </tr>`).join("") : `<tr><td colspan="7" class="empty">Sin datos para estos filtros</td></tr>`;
+        ${HAS_SIZE ? `<td class="num">${fmtNum(g.la)}</td><td class="num">${fmtNum(g.lb)}</td>` : ""}
+      </tr>`).join("") : `<tr><td colspan="9" class="empty">Sin datos para estos filtros</td></tr>`;
     $("authorTable").innerHTML = head + "<tbody>" + body + "</tbody>";
   }
 
@@ -937,6 +1019,7 @@
     const p = periods();
     const base = filtered(false);
     const ra = inPeriod(base, p.a), rb = inPeriod(base, p.b);
+    if (!HAS_SIZE && state.cmetric === "size") state.cmetric = "cum";
     // Controles
     document.querySelectorAll("#cmpMode button").forEach(b => b.classList.toggle("on", b.dataset.v === state.cmode));
     document.querySelectorAll("#cmpMetric button").forEach(b => b.classList.toggle("on", b.dataset.v === state.cmetric));
@@ -951,6 +1034,7 @@
     renderCmpKpis(ra, rb, p);
     renderCmpChart(ra, rb, p);
     renderDist(ra, rb);
+    if (HAS_SIZE) renderSizeTable(ra, rb);
     renderAuthors(ra, rb);
   }
 
@@ -1080,6 +1164,8 @@
 
   function setData(rows, label) {
     ROWS = prepare(rows);
+    HAS_SIZE = ROWS.some(r => r.size != null);
+    document.body.classList.toggle("has-size", HAS_SIZE);
     MAX_DAY = ROWS.reduce((m, r) => (r.day > m ? r.day : m), "");
     MIN_DAY = ROWS.reduce((m, r) => (!m || (r.day && r.day < m) ? r.day : m), "");
     $("meta").textContent = `${nf0.format(ROWS.length)} PRs · ${fmtDay(MIN_DAY)} – ${fmtDay(MAX_DAY)} · ${label}`;
@@ -1110,7 +1196,8 @@
       const loadedAt = new Date().toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" });
       const label = `${file.name} · cargado ${loadedAt}`;
       store.set({ label, csv: String(reader.result) });
-      Object.assign(state, DEFAULTS);
+      const view = state.view; // al cargar otro CSV se reinician los filtros pero no la pestaña
+      Object.assign(state, DEFAULTS, { view });
       setData(rows, label);
     };
     reader.onerror = () => showLoader("No se pudo leer el archivo.");

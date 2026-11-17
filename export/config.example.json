@@ -1,0 +1,22 @@
+{
+  // Copia este archivo a export/config.json (ignorado por git) y rellénalo.
+  // El PAT NO va aquí: se lee de la variable de entorno AZDO_PAT.
+  "organization": "mi-organizacion",
+  "projects": ["Proyecto.Uno", "Proyecto.Dos"],
+
+  // Filtra por nombre del autor (contiene, sin distinguir mayúsculas). Vacío = todos.
+  "authors": ["Nombre1", "Nombre2"],
+
+  "yearsBack": 2,                 // años hacia atrás desde hoy
+  "status": "all",                // all | completed | abandoned | active
+  "output": "PullRequests_Metrics.csv",
+  "maxConcurrency": 4,            // peticiones simultáneas a Azure DevOps
+  "fileDiffBatchSize": 20,
+
+  // Archivos que no cuentan para FilesChanged / LinesAdded / LinesDeleted (glob estilo .gitignore).
+  "excludePatterns": [
+    "**/package-lock.json", "**/yarn.lock", "**/pnpm-lock.yaml", "**/packages.lock.json",
+    "**/*.Designer.cs", "**/Migrations/*.cs",
+    "**/*.min.js", "**/*.min.css", "**/*.map", "**/*.snap", "**/*.svg"
+  ]
+}

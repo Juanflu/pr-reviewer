@@ -12,8 +12,11 @@ import os
 import sys
 from datetime import datetime
 
-DEFAULT_CSV = os.path.expanduser("~/Downloads/PullRequests_Metrics.csv")
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.js")
+HERE = os.path.dirname(os.path.abspath(__file__))
+# Primero el CSV que genera export/ExportPullRequests.cs en la raíz del repo; si no, el de Descargas.
+CANDIDATES = [os.path.join(HERE, "PullRequests_Metrics.csv"),
+              os.path.expanduser("~/Downloads/PullRequests_Metrics.csv")]
+OUT = os.path.join(HERE, "data.js")
 
 
 def to_float(value):
@@ -23,8 +26,15 @@ def to_float(value):
         return None
 
 
+def to_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def main():
-    src = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_CSV
+    src = sys.argv[1] if len(sys.argv) > 1 else next((c for c in CANDIDATES if os.path.isfile(c)), CANDIDATES[-1])
     if not os.path.isfile(src):
         sys.exit(f"No se encuentra el CSV: {src}")
 
@@ -43,6 +53,11 @@ def main():
                 "closed": r.get("ClosedDate", "").strip() or None,
                 "hours": to_float(r.get("HoursOpen")),
                 "url": r.get("Url", "").strip(),
+                # Columnas opcionales (tamaño de la PR); null si el CSV no las trae
+                "commits": to_int(r.get("CommitCount")),
+                "files": to_int(r.get("FilesChanged")),
+                "added": to_int(r.get("LinesAdded")),
+                "deleted": to_int(r.get("LinesDeleted")),
             })
 
     payload = {
@@ -56,7 +71,8 @@ def main():
         json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
         f.write(";\n")
 
-    print(f"{len(rows)} PRs escritas en {OUT}")
+    with_size = sum(1 for r in rows if r["added"] is not None)
+    print(f"{len(rows)} PRs escritas en {OUT} (leído {src}; {with_size} con tamaño)")
 
 
 if __name__ == "__main__":
