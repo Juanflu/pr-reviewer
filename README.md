@@ -11,7 +11,7 @@ Web estática (sin dependencias ni servidor) para explorar el CSV de métricas d
    python3 build_data.py ruta/a/otro.csv      # o un CSV concreto
    ```
 
-   Esto crea/actualiza `data.js`.
+   Esto crea/actualiza `data.js`. Contiene los datos reales, así que está en `.gitignore` y nunca se sube.
 
 2. Abre `index.html` en el navegador (doble clic o `open index.html`).
 
@@ -23,8 +23,7 @@ El workflow `.github/workflows/pages.yml` publica **solo `index.html`**, sin `da
 no queden públicos. Al abrir la web publicada se pide el CSV (seleccionar o arrastrar); se procesa solo en el
 navegador y se guarda en ese navegador para no tener que cargarlo cada vez ("Quitar datos" lo borra).
 
-> En *Settings → Pages* la fuente debe ser **GitHub Actions**. No uses "Deploy from a branch":
-> publicaría también `data.js` con los datos reales.
+> En *Settings → Pages* la fuente debe ser **GitHub Actions**.
 
 ## Qué incluye
 
