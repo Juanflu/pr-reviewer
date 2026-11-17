@@ -32,6 +32,9 @@ navegador y se guarda en ese navegador para no tener que cargarlo cada vez ("Qui
 - Gráfico de evolución por semana o mes (nº de PRs + mediana/media de horas).
 - Tabla agrupada por autor, proyecto, repositorio, rama, estado o mes. Clic en una fila para filtrar.
 - Detalle de PRs ordenable y paginado, con enlace a Azure DevOps.
+- Pestaña **Comparar periodos**: A frente a B (mismo tramo del año, años completos, antes/después de una fecha
+  o fechas libres) con KPIs y variación, PRs por autor activo y mes, evolución mes a mes superpuesta,
+  distribución del tiempo en revisión por tramos y tabla por autor.
 - Los filtros se guardan en la URL (`#...`), así que puedes guardar o compartir una vista.
 
 Notas: el tiempo en revisión es `HoursOpen` (horas naturales, incluye noches y fines de semana). Las PRs activas cuentan en el nº de PRs pero no en las métricas de tiempo.

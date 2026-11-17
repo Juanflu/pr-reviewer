@@ -18,6 +18,7 @@
     --ok: #15803d;
     --hover: #f1f4f9;
     --shadow: 0 1px 2px rgba(16, 24, 40, .05);
+    --cmp-a: #9aa3b2;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -33,6 +34,7 @@
       --ok: #4ade80;
       --hover: #232834;
       --shadow: none;
+      --cmp-a: #7c8696;
     }
   }
   * { box-sizing: border-box; }
@@ -139,7 +141,53 @@
   .btn-primary:hover { background: var(--accent); filter: brightness(1.08); }
   .error { color: var(--danger); margin-top: 12px; }
 
+  /* Pestañas y vista comparativa */
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .tabs button {
+    border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none;
+    padding: 8px 14px; font-weight: 600; color: var(--muted);
+  }
+  .tabs button:hover { background: none; color: var(--text); }
+  .tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+  body.view-compare .explore-only, body.view-explore .compare-only { display: none !important; }
+  .explore-group { display: contents; }
+  .periods { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-top: 12px; }
+  .period { border-left: 4px solid var(--cmp-a); padding: 2px 0 2px 12px; }
+  .period.b { border-left-color: var(--accent); }
+  .period .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .period .row .field { flex: 1 1 120px; }
+  .period h3 { font-size: 13px; margin: 0 0 6px; }
+  .tag { font-size: 11px; font-weight: 500; color: var(--muted); margin-left: 6px; }
+  .cut-field { display: inline-flex; align-items: center; gap: 6px; }
+  .cut-field[hidden] { display: none; }
+  .cut-field input { padding: 3px 6px; font-size: 12px; }
+  #cmpKpis { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+  .cmp-kpi .vals { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 8px; margin-top: 4px; }
+  .cmp-kpi .va { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .cmp-kpi .vb { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .delta { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .delta.good { color: var(--ok); }
+  .delta.bad { color: var(--danger); }
+  #cmpChart { width: 100%; height: 280px; display: block; }
+  #cmpChart text { fill: var(--muted); font-size: 11px; }
+  #cmpChart .grid { stroke: var(--border); }
+  #cmpChart .la { fill: none; stroke: var(--cmp-a); stroke-width: 2; stroke-dasharray: 5 3; }
+  #cmpChart .lb { fill: none; stroke: var(--accent); stroke-width: 2.5; }
+  #cmpChart .da { fill: var(--cmp-a); }
+  #cmpChart .db { fill: var(--accent); }
+  #cmpChart .cursor { stroke: var(--muted); stroke-dasharray: 2 2; }
+  .dist-row { display: grid; grid-template-columns: 70px 1fr; gap: 10px; align-items: center; margin: 10px 0; }
+  .dist-row .lbl { font-size: 12px; color: var(--muted); text-align: right; }
+  .dist-bar { display: flex; align-items: center; gap: 8px; margin: 2px 0; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .dist-bar i { display: block; height: 12px; border-radius: 3px; min-width: 2px; }
+  .dist-bar.a i { background: var(--cmp-a); }
+  .dist-bar.b i { background: var(--accent); }
+  .badge { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--hover); color: var(--muted); margin-left: 6px; }
+  .howto { font-size: 13px; color: var(--muted); margin: 0; padding-left: 18px; }
+  .howto li { margin: 4px 0; }
+
   @media (max-width: 600px) {
+    #cmpChart { height: 220px; }
     main { padding-top: 16px; }
     .kpi .value { font-size: 20px; }
     #chart { height: 220px; }
@@ -171,10 +219,15 @@
   </section>
 
   <div id="app" hidden>
+  <nav class="tabs" id="tabs" aria-label="Vistas">
+    <button type="button" data-view="explore">Explorar</button>
+    <button type="button" data-view="compare">Comparar periodos</button>
+  </nav>
+
   <section class="card" aria-label="Filtros">
     <div class="filters">
-      <div class="field"><label for="f-from">Desde</label><input type="date" id="f-from"></div>
-      <div class="field"><label for="f-to">Hasta</label><input type="date" id="f-to"></div>
+      <div class="field explore-only"><label for="f-from">Desde</label><input type="date" id="f-from"></div>
+      <div class="field explore-only"><label for="f-to">Hasta</label><input type="date" id="f-to"></div>
       <div class="field"><label for="f-author">Autor</label><select id="f-author"></select></div>
       <div class="field"><label for="f-status">Estado</label><select id="f-status"></select></div>
       <div class="field"><label for="f-project">Proyecto</label><select id="f-project"></select></div>
@@ -183,17 +236,95 @@
       <div class="field"><label for="f-q">Buscar en título</label><input type="search" id="f-q" placeholder="p. ej. UA-5643"></div>
     </div>
     <div class="presets">
-      <span class="muted small">Periodo:</span>
-      <button data-preset="30">Últimos 30 días</button>
-      <button data-preset="90">3 meses</button>
-      <button data-preset="180">6 meses</button>
-      <button data-preset="365">Último año</button>
-      <button data-preset="all">Todo</button>
+      <span class="explore-group explore-only">
+        <span class="muted small">Periodo:</span>
+        <button data-preset="30">Últimos 30 días</button>
+        <button data-preset="90">3 meses</button>
+        <button data-preset="180">6 meses</button>
+        <button data-preset="365">Último año</button>
+        <button data-preset="all">Todo</button>
+      </span>
+      <span class="compare-only muted small">Los filtros se aplican a los dos periodos.</span>
       <span class="spacer"></span>
       <button id="reset">Limpiar filtros</button>
     </div>
   </section>
 
+  <!-- ===== Vista: comparar periodos ===== -->
+  <div class="compare-only" id="view-compare">
+    <section class="card" aria-label="Periodos">
+      <div class="presets" style="margin-top:0">
+        <span class="muted small">Comparar:</span>
+        <div class="seg" id="cmpMode">
+          <button data-v="ytd">Mismo tramo del año</button><button data-v="years">Años completos</button><button data-v="cut">Antes / después de…</button>
+        </div>
+        <span class="cut-field" id="cutWrap"><input type="date" id="cutDate" aria-label="Fecha de corte"></span>
+      </div>
+      <div class="periods">
+        <div class="period a">
+          <h3>Periodo A <span class="tag" id="aTag"></span></h3>
+          <div class="row">
+            <div class="field"><label for="c-aFrom">Desde</label><input type="date" id="c-aFrom"></div>
+            <div class="field"><label for="c-aTo">Hasta</label><input type="date" id="c-aTo"></div>
+          </div>
+        </div>
+        <div class="period b">
+          <h3>Periodo B <span class="tag" id="bTag"></span></h3>
+          <div class="row">
+            <div class="field"><label for="c-bFrom">Desde</label><input type="date" id="c-bFrom"></div>
+            <div class="field"><label for="c-bTo">Hasta</label><input type="date" id="c-bTo"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="kpis" id="cmpKpis" aria-label="Indicadores A frente a B"></section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Mes a mes</h2>
+        <div class="legend">
+          <span><i style="background:var(--cmp-a)"></i><span id="legA">A</span></span>
+          <span><i style="background:var(--accent)"></i><span id="legB">B</span></span>
+          <div class="seg" id="cmpMetric">
+            <button data-v="cum">PRs acumuladas</button><button data-v="month">PRs por mes</button><button data-v="median">Mediana h</button>
+          </div>
+        </div>
+      </div>
+      <div class="chart-wrap" id="cmpWrap">
+        <svg id="cmpChart" role="img" aria-label="Comparación mes a mes"></svg>
+        <div class="tip" id="cmpTip"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Distribución del tiempo en revisión</h2>
+        <span class="muted small">% de PRs cerradas en cada tramo</span>
+      </div>
+      <div id="dist"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Por autor</h2></div>
+      <div class="table-wrap"><table id="authorTable"></table></div>
+      <div class="note">Sirve para separar el efecto de cambios en el equipo (gente que entra, sale o cambia de dedicación) del efecto en el proceso.</div>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-bottom:8px">Cómo leerlo</h2>
+      <ul class="howto">
+        <li><b>Correlación no es causalidad:</b> la IA es uno de varios cambios entre periodos (equipo, proyectos, tipo de trabajo).</li>
+        <li><b>Horas naturales:</b> el tiempo en revisión va de la creación al cierre e incluye noches y fines de semana.</li>
+        <li><b>Sin tamaño de PR:</b> el CSV no trae líneas cambiadas; si con IA las PRs son más grandes, es normal que tarden más en revisarse.</li>
+        <li><b>Mediana y P90</b> son más fiables que la media, que se dispara con unas pocas PRs olvidadas.</li>
+        <li><b>PRs por autor activo y mes</b> descuenta los cambios de tamaño del equipo (autor activo = al menos una PR en el periodo).</li>
+      </ul>
+    </section>
+  </div>
+
+  <!-- ===== Vista: explorar ===== -->
+  <div class="explore-only" id="view-explore">
   <section class="kpis" id="kpis" aria-label="Indicadores"></section>
 
   <section class="card">
@@ -243,6 +374,7 @@
     <div class="table-wrap"><table id="detailTable"></table></div>
     <div class="pager" id="pager"></div>
   </section>
+  </div>
   </div>
 </main>
 
@@ -309,7 +441,9 @@
   const ALL = "";
   const FILTER_KEYS = ["from", "to", "author", "status", "project", "repo", "branch", "q"];
   const DEFAULTS = { from: "", to: "", author: ALL, status: ALL, project: ALL, repo: ALL, branch: ALL, q: "",
-    group: "author", gran: "month", line: "median", gs: "count", gd: "desc", ds: "created", dd: "desc", page: 1 };
+    group: "author", gran: "month", line: "median", gs: "count", gd: "desc", ds: "created", dd: "desc", page: 1,
+    // Vista comparativa
+    view: "explore", cmode: "ytd", cut: "", aFrom: "", aTo: "", bFrom: "", bTo: "", cmetric: "cum", as: "b", ad: "desc" };
   const state = { ...DEFAULTS };
   const PAGE_SIZE = 50;
 
@@ -372,11 +506,11 @@
     el.from.min = el.to.min = MIN_DAY; el.from.max = el.to.max = MAX_DAY;
   }
 
-  function filtered() {
+  function filtered(useDates = true) {
     const q = state.q.trim().toLowerCase();
     return ROWS.filter(r =>
-      (!state.from || r.day >= state.from) &&
-      (!state.to || r.day <= state.to) &&
+      (!useDates || !state.from || r.day >= state.from) &&
+      (!useDates || !state.to || r.day <= state.to) &&
       (!state.author || r.author === state.author) &&
       (!state.status || r.status === state.status) &&
       (!state.project || r.project === state.project) &&
@@ -593,18 +727,253 @@
       : "";
   }
 
+  // ---------- Comparar periodos ----------
+  const DAY_MS = 86400000;
+  const toDate = d => new Date(d + "T00:00:00Z");
+  const iso = dt => dt.toISOString().slice(0, 10);
+  const addDays = (d, n) => iso(new Date(toDate(d).getTime() + n * DAY_MS));
+  const daysIncl = (a, b) => Math.round((toDate(b) - toDate(a)) / DAY_MS) + 1;
+  const minDay = (a, b) => (a < b ? a : b);
+  const maxDay = (a, b) => (a > b ? a : b);
+  const isLeap = y => y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
+  function shiftYear(d, n) { // misma fecha n años antes/después (29-feb → 28-feb)
+    const y = Number(d.slice(0, 4)) + n, md = d.slice(5);
+    return md === "02-29" && !isLeap(y) ? `${y}-02-28` : `${y}-${md}`;
+  }
+  const monthIdx = (day, start) =>
+    (Number(day.slice(0, 4)) - Number(start.slice(0, 4))) * 12 + (Number(day.slice(5, 7)) - Number(start.slice(5, 7)));
+  const monthShort = new Intl.DateTimeFormat("es-ES", { month: "short", timeZone: "UTC" });
+
+  function periods() {
+    const Y = Number(MAX_DAY.slice(0, 4));
+    let a, b;
+    if (state.cmode === "ytd") {
+      b = [`${Y}-01-01`, MAX_DAY];
+      a = [`${Y - 1}-01-01`, shiftYear(MAX_DAY, -1)];
+    } else if (state.cmode === "years") {
+      a = [`${Y - 1}-01-01`, `${Y - 1}-12-31`];
+      b = [`${Y}-01-01`, `${Y}-12-31`];
+    } else if (state.cmode === "cut") {
+      const cut = state.cut && state.cut > MIN_DAY && state.cut <= MAX_DAY ? state.cut : `${Y}-01-01`;
+      const n = daysIncl(cut, MAX_DAY);
+      b = [cut, MAX_DAY];
+      a = [addDays(cut, -n), addDays(cut, -1)];
+    } else {
+      a = [state.aFrom || MIN_DAY, state.aTo || MAX_DAY];
+      b = [state.bFrom || MIN_DAY, state.bTo || MAX_DAY];
+    }
+    return { a, b };
+  }
+  // Tramo del periodo cubierto por los datos
+  const effective = p => [maxDay(p[0], MIN_DAY), minDay(p[1], MAX_DAY)];
+  const inPeriod = (rows, p) => rows.filter(r => r.day >= p[0] && r.day <= p[1]);
+
+  function periodTag(p) {
+    const tags = [];
+    if (p[1] > MAX_DAY) tags.push(`incompleto: datos hasta ${fmtDay(MAX_DAY)}`);
+    if (p[0] < MIN_DAY) tags.push(`datos desde ${fmtDay(MIN_DAY)}`);
+    return tags.join(" · ");
+  }
+  function periodLabel(p) {
+    const e = effective(p);
+    return `${fmtDay(e[0])} – ${fmtDay(e[1])}`;
+  }
+
+  function perAuthorMonth(rows, p) {
+    const e = effective(p);
+    if (e[0] > e[1]) return null;
+    const months = daysIncl(e[0], e[1]) / 30.4375;
+    const authors = new Set(rows.map(r => r.author)).size;
+    return authors ? rows.length / authors / months : null;
+  }
+
+  // better: 1 = subir es bueno, -1 = bajar es bueno. kind "pp" = diferencia en puntos porcentuales.
+  function delta(a, b, better, kind) {
+    if (a == null || b == null || (kind !== "pp" && !a)) return `<span class="delta">—</span>`;
+    const d = kind === "pp" ? (b - a) * 100 : ((b - a) / a) * 100;
+    const txt = `${d >= 0 ? "+" : ""}${nf1.format(d)}${kind === "pp" ? " pp" : " %"}`;
+    const cls = Math.abs(d) < 0.05 ? "" : (d > 0) === (better > 0) ? "good" : "bad";
+    return `<span class="delta ${cls}">${txt}</span>`;
+  }
+
+  function renderCmpKpis(ra, rb, p) {
+    const sa = stats(ra), sb = stats(rb);
+    const show = (v, f) => (v == null ? "—" : f(v));
+    const items = [
+      ["PRs", sa.count, sb.count, v => nf0.format(v), 1],
+      ["PRs por autor activo y mes", perAuthorMonth(ra, p.a), perAuthorMonth(rb, p.b), v => nf1.format(v), 1],
+      ["Media en revisión", sa.mean, sb.mean, fmtHours, -1],
+      ["Mediana en revisión", sa.median, sb.median, fmtHours, -1],
+      ["P90 en revisión", sa.p90, sb.p90, fmtHours, -1],
+      ["Abandonadas", sa.abandonedPct, sb.abandonedPct, v => pct.format(v), -1, "pp"]
+    ];
+    // Si no hay ninguna abandonada (p. ej. el CSV solo trae completadas), la tarjeta no aporta nada
+    if (!sa.abandonedPct && !sb.abandonedPct) items.pop();
+    $("cmpKpis").innerHTML = items.map(([label, a, b, f, better, kind]) => `
+      <div class="kpi cmp-kpi">
+        <div class="label">${label}</div>
+        <div class="vals"><span class="vb">${show(b, f)}</span>${delta(a, b, better, kind)}</div>
+        <div class="va">A: ${show(a, f)}</div>
+      </div>`).join("");
+  }
+
+  function monthly(rows, p) {
+    const e = effective(p);
+    const n = e[0] > e[1] ? 0 : monthIdx(e[1], p[0]) + 1;
+    const buckets = Array.from({ length: Math.max(0, n) }, () => []);
+    for (const r of rows) { const i = monthIdx(r.day, p[0]); if (i >= 0 && i < n) buckets[i].push(r); }
+    let acc = 0;
+    return buckets.map(b => { acc += b.length; return { month: b.length, cum: acc, median: stats(b).median }; });
+  }
+
+  function renderCmpChart(ra, rb, p) {
+    const svg = $("cmpChart"), tip = $("cmpTip");
+    const W = svg.clientWidth || 800, H = svg.clientHeight || 280;
+    const m = { t: 14, r: 16, b: 28, l: 52 };
+    const iw = W - m.l - m.r, ih = H - m.t - m.b;
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    const metric = state.cmetric;
+    const A = monthly(ra, p.a).map(s => s[metric]);
+    const B = monthly(rb, p.b).map(s => s[metric]);
+    const n = Math.max(A.length, B.length);
+    if (!n) { svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle">Sin datos para estos periodos</text>`; return; }
+
+    // Etiquetas: nombre del mes si ambos periodos empiezan el día 1 del mismo mes; si no, "Mes 1, 2…"
+    const sameStart = p.a[0].slice(5) === p.b[0].slice(5) && p.b[0].slice(8) === "01";
+    const label = i => {
+      if (!sameStart) return `Mes ${i + 1}`;
+      const d = toDate(p.b[0]); d.setUTCMonth(d.getUTCMonth() + i);
+      return monthShort.format(d).replace(".", "");
+    };
+    const fmtV = v => (v == null ? "—" : metric === "median" ? fmtHours(v) : nf0.format(v));
+    const fmtAxis = v => (metric === "median" ? nf0.format(v) + "h" : nf0.format(v));
+
+    const maxV = Math.max(1, ...A.concat(B).filter(v => v != null));
+    const pw = Math.pow(10, Math.floor(Math.log10(maxV)));
+    const yMax = Math.ceil(maxV / pw) * pw;
+    const slot = iw / n;
+    const x = i => m.l + slot * i + slot / 2;
+    const y = v => m.t + ih - (v / yMax) * ih;
+
+    let out = "";
+    for (let i = 0; i <= 4; i++) {
+      const gy = m.t + (ih * i) / 4;
+      out += `<line class="grid" x1="${m.l}" x2="${m.l + iw}" y1="${gy}" y2="${gy}"/>`;
+      out += `<text x="${m.l - 6}" y="${gy + 4}" text-anchor="end">${fmtAxis(yMax * (1 - i / 4))}</text>`;
+    }
+    const every = Math.max(1, Math.ceil(n / Math.max(1, Math.floor(iw / 48))));
+    for (let i = 0; i < n; i += every) out += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${esc(label(i))}</text>`;
+    const path = s => { let d = "", pen = false; s.forEach((v, i) => { if (v == null) { pen = false; return; } d += `${pen ? "L" : "M"}${x(i)},${y(v)}`; pen = true; }); return d; };
+    out += `<path class="la" d="${path(A)}"/><path class="lb" d="${path(B)}"/>`;
+    A.forEach((v, i) => { if (v != null) out += `<circle class="da" cx="${x(i)}" cy="${y(v)}" r="2.5"/>`; });
+    B.forEach((v, i) => { if (v != null) out += `<circle class="db" cx="${x(i)}" cy="${y(v)}" r="3"/>`; });
+    out += `<line class="cursor" id="cmpCursor" y1="${m.t}" y2="${m.t + ih}" x1="-10" x2="-10"/>`;
+    out += `<rect id="cmpHit" x="${m.l}" y="${m.t}" width="${iw}" height="${ih}" fill="transparent"/>`;
+    svg.innerHTML = out;
+
+    const hit = svg.querySelector("#cmpHit"), cursor = svg.querySelector("#cmpCursor");
+    hit.addEventListener("mousemove", e => {
+      const rect = svg.getBoundingClientRect();
+      const px = (e.clientX - rect.left) * (W / rect.width);
+      const i = Math.min(n - 1, Math.max(0, Math.floor((px - m.l) / slot)));
+      cursor.setAttribute("x1", x(i)); cursor.setAttribute("x2", x(i));
+      const a = A[i], b = B[i];
+      tip.innerHTML = `<b>${esc(label(i))}</b><br>A: ${fmtV(a)}<br>B: ${fmtV(b)}` +
+        (a != null && b != null ? `<br>Δ ${delta(a, b, metric === "median" ? -1 : 1).replace(/<[^>]+>/g, "")}` : "");
+      tip.style.display = "block";
+      const wrap = $("cmpWrap").getBoundingClientRect();
+      let left = e.clientX - wrap.left + 12;
+      if (left + tip.offsetWidth > wrap.width) left = e.clientX - wrap.left - tip.offsetWidth - 12;
+      tip.style.left = left + "px";
+      tip.style.top = (e.clientY - wrap.top - 10) + "px";
+    });
+    hit.addEventListener("mouseleave", () => { tip.style.display = "none"; cursor.setAttribute("x1", -10); cursor.setAttribute("x2", -10); });
+  }
+
+  const BUCKETS = [["< 1 h", 0, 1], ["1–4 h", 1, 4], ["4–24 h", 4, 24], ["1–3 d", 24, 72], ["> 3 d", 72, Infinity]];
+  function distribution(rows) {
+    const t = rows.filter(r => r.hasTime);
+    return BUCKETS.map(([, lo, hi]) => (t.length ? t.filter(r => r.hours >= lo && r.hours < hi).length / t.length : 0));
+  }
+  function renderDist(ra, rb) {
+    const da = distribution(ra), db = distribution(rb);
+    const max = Math.max(0.01, ...da, ...db);
+    const bar = (cls, v, name) =>
+      `<div class="dist-bar ${cls}" title="${name}: ${pct.format(v)}"><i style="width:${(v / max) * 80}%"></i><span>${pct.format(v)}</span></div>`;
+    $("dist").innerHTML = BUCKETS.map(([label], i) => `
+      <div class="dist-row">
+        <div class="lbl">${label}</div>
+        <div>${bar("a", da[i], "Periodo A")}${bar("b", db[i], "Periodo B")}</div>
+      </div>`).join("");
+  }
+
+  function renderAuthors(ra, rb) {
+    const by = (rows) => { const m = new Map(); for (const r of rows) (m.get(r.author) || m.set(r.author, []).get(r.author)).push(r); return m; };
+    const ma = by(ra), mb = by(rb);
+    const names = [...new Set([...ma.keys(), ...mb.keys()])];
+    const list = names.map(k => {
+      const a = ma.get(k) || [], b = mb.get(k) || [];
+      const sa = stats(a), sb = stats(b);
+      return { k, a: a.length, b: b.length, dn: a.length ? (b.length - a.length) / a.length : null,
+        ma: sa.median, mb: sb.median, dm: sa.median && sb.median != null ? (sb.median - sa.median) / sa.median : null };
+    });
+    list.sort((x, y) => cmp(x[state.as], y[state.as], state.ad) || cmp(x.k, y.k, "asc"));
+    const h = (k, l, num) => th(k, l, state.as, state.ad, num, "data-as");
+    const head = "<thead><tr>" + h("k", "Autor") + h("a", "PRs A", true) + h("b", "PRs B", true) + h("dn", "Δ PRs", true) +
+      h("ma", "Mediana A", true) + h("mb", "Mediana B", true) + h("dm", "Δ mediana", true) + "</tr></thead>";
+    const body = list.length ? list.map(g => `<tr>
+        <td>${esc(g.k)}${!g.a ? '<span class="badge">nuevo en B</span>' : !g.b ? '<span class="badge">sin PRs en B</span>' : ""}</td>
+        <td class="num">${nf0.format(g.a)}</td>
+        <td class="num">${nf0.format(g.b)}</td>
+        <td class="num">${delta(g.a || null, g.b, 1)}</td>
+        <td class="num">${fmtHours(g.ma)}</td>
+        <td class="num">${fmtHours(g.mb)}</td>
+        <td class="num">${delta(g.ma, g.mb, -1)}</td>
+      </tr>`).join("") : `<tr><td colspan="7" class="empty">Sin datos para estos filtros</td></tr>`;
+    $("authorTable").innerHTML = head + "<tbody>" + body + "</tbody>";
+  }
+
+  function renderCompare() {
+    const p = periods();
+    const base = filtered(false);
+    const ra = inPeriod(base, p.a), rb = inPeriod(base, p.b);
+    // Controles
+    document.querySelectorAll("#cmpMode button").forEach(b => b.classList.toggle("on", b.dataset.v === state.cmode));
+    document.querySelectorAll("#cmpMetric button").forEach(b => b.classList.toggle("on", b.dataset.v === state.cmetric));
+    $("cutWrap").hidden = state.cmode !== "cut";
+    if (state.cmode === "cut") $("cutDate").value = p.b[0];
+    $("c-aFrom").value = p.a[0]; $("c-aTo").value = p.a[1];
+    $("c-bFrom").value = p.b[0]; $("c-bTo").value = p.b[1];
+    $("aTag").textContent = periodTag(p.a);
+    $("bTag").textContent = periodTag(p.b);
+    $("legA").textContent = "A · " + periodLabel(p.a);
+    $("legB").textContent = "B · " + periodLabel(p.b);
+    renderCmpKpis(ra, rb, p);
+    renderCmpChart(ra, rb, p);
+    renderDist(ra, rb);
+    renderAuthors(ra, rb);
+  }
+
   // ---------- Render ----------
   let lastRows = [];
   function render() {
     refreshOptions();
-    $("groupBy").value = state.group;
-    document.querySelectorAll("#gran button").forEach(b => b.classList.toggle("on", b.dataset.v === state.gran));
-    document.querySelectorAll("#lineMetric button").forEach(b => b.classList.toggle("on", b.dataset.v === state.line));
-    lastRows = filtered();
-    renderKpis(stats(lastRows));
-    renderChart(lastRows);
-    renderGroups(lastRows);
-    renderDetail(lastRows);
+    const compare = state.view === "compare";
+    document.body.classList.toggle("view-compare", compare);
+    document.body.classList.toggle("view-explore", !compare);
+    document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.view === state.view));
+    if (compare) {
+      renderCompare();
+    } else {
+      $("groupBy").value = state.group;
+      document.querySelectorAll("#gran button").forEach(b => b.classList.toggle("on", b.dataset.v === state.gran));
+      document.querySelectorAll("#lineMetric button").forEach(b => b.classList.toggle("on", b.dataset.v === state.line));
+      lastRows = filtered();
+      renderKpis(stats(lastRows));
+      renderChart(lastRows);
+      renderGroups(lastRows);
+      renderDetail(lastRows);
+    }
     writeHash();
   }
 
@@ -630,6 +999,37 @@
   $("groupBy").addEventListener("change", e => { state.group = e.target.value; state.gs = "count"; state.gd = "desc"; render(); });
   $("gran").addEventListener("click", e => { if (e.target.dataset.v) { state.gran = e.target.dataset.v; render(); } });
   $("lineMetric").addEventListener("click", e => { if (e.target.dataset.v) { state.line = e.target.dataset.v; render(); } });
+
+  // Comparar periodos
+  $("tabs").addEventListener("click", e => {
+    const b = e.target.closest("button[data-view]");
+    if (b && b.dataset.view !== state.view) { state.view = b.dataset.view; render(); }
+  });
+  $("cmpMode").addEventListener("click", e => {
+    const v = e.target.dataset.v;
+    if (!v) return;
+    state.cmode = v;
+    state.aFrom = state.aTo = state.bFrom = state.bTo = "";
+    render();
+  });
+  $("cutDate").addEventListener("change", e => { state.cut = e.target.value; render(); });
+  $("cmpMetric").addEventListener("click", e => { if (e.target.dataset.v) { state.cmetric = e.target.dataset.v; render(); } });
+  for (const k of ["aFrom", "aTo", "bFrom", "bTo"]) {
+    $("c-" + k).addEventListener("change", e => {
+      // Editar una fecha a mano pasa a modo personalizado conservando las demás
+      const p = periods();
+      Object.assign(state, { cmode: "custom", aFrom: p.a[0], aTo: p.a[1], bFrom: p.b[0], bTo: p.b[1] });
+      if (e.target.value) state[k] = e.target.value;
+      render();
+    });
+  }
+  $("authorTable").addEventListener("click", e => {
+    const h = e.target.closest("th[data-as]");
+    if (!h) return;
+    const k = h.dataset.as;
+    state.ad = state.as === k ? (state.ad === "asc" ? "desc" : "asc") : (k === "k" ? "asc" : "desc");
+    state.as = k; render();
+  });
 
   $("groupTable").addEventListener("click", e => {
     const h = e.target.closest("th[data-gs]");
@@ -665,7 +1065,10 @@
     if (p && !p.disabled) { state.page = Number(p.dataset.p); render(); $("detailTable").scrollIntoView({ block: "nearest" }); }
   });
   let rt;
-  window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => ROWS.length && renderChart(lastRows), 120); });
+  window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => {
+    if (!ROWS.length) return;
+    if (state.view === "compare") renderCompare(); else renderChart(lastRows);
+  }, 120); });
   window.addEventListener("hashchange", () => { if (!ROWS.length) return; Object.assign(state, DEFAULTS); readHash(); render(); });
 
   // ---------- Carga de datos ----------
