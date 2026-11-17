@@ -15,6 +15,17 @@ Web estática (sin dependencias ni servidor) para explorar el CSV de métricas d
 
 2. Abre `index.html` en el navegador (doble clic o `open index.html`).
 
+## Versión publicada (GitHub Pages)
+
+https://juanflu.github.io/pr-reviewer/
+
+El workflow `.github/workflows/pages.yml` publica **solo `index.html`**, sin `data.js`, para que los datos
+no queden públicos. Al abrir la web publicada se pide el CSV (seleccionar o arrastrar); se procesa solo en el
+navegador y se guarda en ese navegador para no tener que cargarlo cada vez ("Quitar datos" lo borra).
+
+> En *Settings → Pages* la fuente debe ser **GitHub Actions**. No uses "Deploy from a branch":
+> publicaría también `data.js` con los datos reales.
+
 ## Qué incluye
 
 - Filtros: rango de fechas (con atajos), autor, estado, proyecto, repositorio (limitado al proyecto), rama destino y búsqueda en título/ID. Todos admiten "Todos".

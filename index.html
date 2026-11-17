@@ -126,6 +126,19 @@
   .empty { padding: 24px; text-align: center; color: var(--muted); }
   .note { font-size: 12px; color: var(--muted); margin-top: 8px; }
 
+  .head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .head-actions button { font-size: 12px; padding: 4px 10px; }
+  #loader { text-align: center; padding: 48px 16px; }
+  .drop {
+    border: 2px dashed var(--border); border-radius: 10px; padding: 40px 16px; margin: 16px auto 0; max-width: 560px;
+    transition: border-color .15s, background .15s;
+  }
+  body.dragging .drop, body.dragging #app { border-color: var(--accent); background: var(--hover); }
+  .drop p { margin: 6px 0; }
+  .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); padding: 8px 16px; }
+  .btn-primary:hover { background: var(--accent); filter: brightness(1.08); }
+  .error { color: var(--danger); margin-top: 12px; }
+
   @media (max-width: 600px) {
     main { padding-top: 16px; }
     .kpi .value { font-size: 20px; }
@@ -137,9 +150,27 @@
 <main>
   <header>
     <h1>Métricas de Pull Requests</h1>
-    <div class="muted small" id="meta"></div>
+    <div class="head-actions">
+      <span class="muted small" id="meta"></span>
+      <button type="button" id="loadOther" hidden>Cargar otro CSV</button>
+      <button type="button" id="forget" hidden>Quitar datos</button>
+    </div>
   </header>
+  <input type="file" id="fileInput" accept=".csv,text/csv" hidden>
 
+  <section class="card" id="loader" hidden>
+    <h2>Carga el CSV de métricas de PRs</h2>
+    <div class="drop">
+      <p>Arrastra aquí <b>PullRequests_Metrics.csv</b></p>
+      <p class="muted small">o</p>
+      <button type="button" class="btn-primary" id="pick">Elegir archivo…</button>
+    </div>
+    <p class="muted small" style="margin-top:16px">El archivo se procesa solo en tu navegador: no se envía a ningún servidor.
+      Se guarda en este navegador para que no tengas que cargarlo cada vez.</p>
+    <div class="error" id="loadError"></div>
+  </section>
+
+  <div id="app" hidden>
   <section class="card" aria-label="Filtros">
     <div class="filters">
       <div class="field"><label for="f-from">Desde</label><input type="date" id="f-from"></div>
@@ -212,29 +243,68 @@
     <div class="table-wrap"><table id="detailTable"></table></div>
     <div class="pager" id="pager"></div>
   </section>
+  </div>
 </main>
 
+<!-- data.js solo existe en local (lo genera build_data.py); en GitHub Pages no se publica. -->
 <script src="data.js"></script>
 <script>
 (function () {
   "use strict";
 
   // ---------- Datos ----------
-  const DATA = window.PR_DATA;
-  if (!DATA || !Array.isArray(DATA.rows)) {
-    document.querySelector("main").innerHTML =
-      '<div class="card empty">No se encontró <code>data.js</code>. Ejecuta <code>python3 build_data.py</code> en esta carpeta.</div>';
-    return;
+  // Origen de los datos, por prioridad: data.js (local) > CSV guardado en este navegador > pantalla de carga.
+  const STORE_KEY = "pr-metrics-csv";
+  let ROWS = [], MAX_DAY = "", MIN_DAY = "", fromDataJs = false;
+
+  function prepare(rows) {
+    return rows.map(r => ({
+      ...r,
+      day: r.created ? r.created.slice(0, 10) : "",
+      month: r.created ? r.created.slice(0, 7) : "",
+      titleLC: (r.title || "").toLowerCase(),
+      hasTime: r.status !== "active" && typeof r.hours === "number"
+    }));
   }
-  const ROWS = DATA.rows.map(r => ({
-    ...r,
-    day: r.created ? r.created.slice(0, 10) : "",
-    month: r.created ? r.created.slice(0, 7) : "",
-    titleLC: (r.title || "").toLowerCase(),
-    hasTime: r.status !== "active" && typeof r.hours === "number"
-  }));
-  const MAX_DAY = ROWS.reduce((m, r) => (r.day > m ? r.day : m), "");
-  const MIN_DAY = ROWS.reduce((m, r) => (!m || (r.day && r.day < m) ? r.day : m), "");
+
+  // Parser CSV (RFC 4180: comillas, comillas escapadas, saltos de línea dentro de campos, BOM).
+  function parseCSV(text) {
+    text = text.replace(/^﻿/, "");
+    const out = []; let row = [], field = "", quoted = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (quoted) {
+        if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else quoted = false; }
+        else field += c;
+      } else if (c === '"') quoted = true;
+      else if (c === ",") { row.push(field); field = ""; }
+      else if (c === "\n" || c === "\r") {
+        if (c === "\r" && text[i + 1] === "\n") i++;
+        row.push(field); out.push(row); row = []; field = "";
+      } else field += c;
+    }
+    if (field || row.length) { row.push(field); out.push(row); }
+    return out.filter(r => r.length > 1 || r[0] !== "");
+  }
+
+  const COLS = { project: "Project", repo: "Repository", id: "PullRequestId", title: "Title", status: "Status",
+    author: "Author", branch: "TargetBranch", created: "CreationDate", closed: "ClosedDate", hours: "HoursOpen", url: "Url" };
+
+  function rowsFromCSV(text) {
+    const table = parseCSV(text);
+    if (table.length < 2) throw new Error("El CSV está vacío.");
+    const header = table[0].map(h => h.trim());
+    const missing = Object.values(COLS).filter(c => !header.includes(c));
+    if (missing.length) throw new Error("Faltan columnas en el CSV: " + missing.join(", "));
+    const idx = Object.fromEntries(Object.entries(COLS).map(([k, c]) => [k, header.indexOf(c)]));
+    return table.slice(1).map(cells => {
+      const get = k => (cells[idx[k]] || "").trim();
+      const h = parseFloat(get("hours"));
+      return { project: get("project"), repo: get("repo"), id: get("id"), title: get("title"), status: get("status"),
+        author: get("author"), branch: get("branch"), created: get("created") || null, closed: get("closed") || null,
+        hours: isNaN(h) ? null : h, url: get("url") };
+    });
+  }
 
   const ALL = "";
   const FILTER_KEYS = ["from", "to", "author", "status", "project", "repo", "branch", "q"];
@@ -595,13 +665,86 @@
     if (p && !p.disabled) { state.page = Number(p.dataset.p); render(); $("detailTable").scrollIntoView({ block: "nearest" }); }
   });
   let rt;
-  window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => renderChart(lastRows), 120); });
-  window.addEventListener("hashchange", () => { Object.assign(state, DEFAULTS); readHash(); render(); });
+  window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => ROWS.length && renderChart(lastRows), 120); });
+  window.addEventListener("hashchange", () => { if (!ROWS.length) return; Object.assign(state, DEFAULTS); readHash(); render(); });
+
+  // ---------- Carga de datos ----------
+  const store = {
+    get() { try { return JSON.parse(localStorage.getItem(STORE_KEY)); } catch (e) { return null; } },
+    set(v) { try { localStorage.setItem(STORE_KEY, JSON.stringify(v)); return true; } catch (e) { return false; } },
+    clear() { try { localStorage.removeItem(STORE_KEY); } catch (e) { /* sin almacenamiento */ } }
+  };
+
+  function setData(rows, label) {
+    ROWS = prepare(rows);
+    MAX_DAY = ROWS.reduce((m, r) => (r.day > m ? r.day : m), "");
+    MIN_DAY = ROWS.reduce((m, r) => (!m || (r.day && r.day < m) ? r.day : m), "");
+    $("meta").textContent = `${nf0.format(ROWS.length)} PRs · ${fmtDay(MIN_DAY)} – ${fmtDay(MAX_DAY)} · ${label}`;
+    $("loader").hidden = true;
+    $("app").hidden = false;
+    $("loadOther").hidden = fromDataJs;
+    $("forget").hidden = fromDataJs;
+    render();
+  }
+
+  function showLoader(error) {
+    ROWS = [];
+    $("app").hidden = true;
+    $("loader").hidden = false;
+    $("loadOther").hidden = $("forget").hidden = true;
+    $("meta").textContent = "";
+    $("loadError").textContent = error || "";
+  }
+
+  function loadFile(file) {
+    if (!file || fromDataJs) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      let rows;
+      try { rows = rowsFromCSV(String(reader.result)); }
+      catch (err) { showLoader(err.message); return; }
+      if (!rows.length) { showLoader("El CSV no tiene filas de datos."); return; }
+      const loadedAt = new Date().toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" });
+      const label = `${file.name} · cargado ${loadedAt}`;
+      store.set({ label, csv: String(reader.result) });
+      Object.assign(state, DEFAULTS);
+      setData(rows, label);
+    };
+    reader.onerror = () => showLoader("No se pudo leer el archivo.");
+    reader.readAsText(file, "utf-8");
+  }
+
+  const fileInput = $("fileInput");
+  $("pick").addEventListener("click", () => fileInput.click());
+  $("loadOther").addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", () => { loadFile(fileInput.files[0]); fileInput.value = ""; });
+  $("forget").addEventListener("click", () => { store.clear(); history.replaceState(null, "", location.pathname); showLoader(); });
+
+  // Arrastrar y soltar en cualquier parte de la página
+  let dragDepth = 0;
+  const isFileDrag = e => e.dataTransfer && [...e.dataTransfer.types].includes("Files");
+  window.addEventListener("dragenter", e => { if (!isFileDrag(e) || fromDataJs) return; dragDepth++; document.body.classList.add("dragging"); });
+  window.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove("dragging"); } });
+  window.addEventListener("dragover", e => { if (isFileDrag(e)) e.preventDefault(); });
+  window.addEventListener("drop", e => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault(); dragDepth = 0; document.body.classList.remove("dragging");
+    loadFile(e.dataTransfer.files[0]);
+  });
 
   // ---------- Inicio ----------
-  $("meta").textContent = `${nf0.format(ROWS.length)} PRs · ${fmtDay(MIN_DAY)} – ${fmtDay(MAX_DAY)} · datos generados ${DATA.generatedAt}`;
   readHash();
-  render();
+  const local = window.PR_DATA;
+  if (local && Array.isArray(local.rows)) {
+    fromDataJs = true;
+    setData(local.rows, `datos generados ${local.generatedAt}`);
+  } else {
+    const saved = store.get();
+    let rows = null;
+    try { rows = saved && saved.csv ? rowsFromCSV(saved.csv) : null; } catch (e) { store.clear(); }
+    if (rows && rows.length) setData(rows, saved.label);
+    else showLoader();
+  }
 })();
 </script>
 </body>
