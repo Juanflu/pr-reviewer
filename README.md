@@ -52,7 +52,7 @@ navegador y se guarda en ese navegador para no tener que cargarlo cada vez ("Qui
 
 ## Qué incluye
 
-- Filtros: rango de fechas (con atajos), autor, estado, proyecto, repositorio (limitado al proyecto), rama destino y búsqueda en título/ID. Todos admiten "Todos".
+- Filtros: rango de fechas (con atajos), autor, estado, proyecto, repositorio (limitado a los proyectos elegidos), rama destino y búsqueda en título/ID. Autor, estado, proyecto, repositorio y rama son de selección múltiple ("Todos", "Ninguno", "solo" en cada opción; p. ej. todos los autores menos dos).
 - KPIs: nº de PRs, media, mediana y P90 del tiempo en revisión, % de abandonadas.
 - Gráfico de evolución por semana o mes (nº de PRs + mediana/media de horas).
 - Tabla agrupada por autor, proyecto, repositorio, rama, estado o mes. Clic en una fila para filtrar.

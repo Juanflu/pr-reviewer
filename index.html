@@ -151,6 +151,31 @@
   .tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
   body.view-compare .explore-only, body.view-explore .compare-only { display: none !important; }
   .explore-group { display: contents; }
+
+  /* Selector múltiple */
+  .ms { position: relative; }
+  .ms-btn { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 6px; text-align: left; }
+  .ms-btn span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ms-caret { color: var(--muted); font-size: 10px; }
+  .ms-panel {
+    position: absolute; z-index: 10; top: calc(100% + 4px); left: 0;
+    min-width: 100%; width: max-content; max-width: min(360px, calc(100vw - 32px));
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(16, 24, 40, .18); padding: 8px;
+  }
+  .ms-panel.right { left: auto; right: 0; }
+  .ms-search { width: 100%; margin-bottom: 6px; }
+  .ms-actions { display: flex; gap: 6px; margin-bottom: 6px; }
+  .ms-actions button { font-size: 12px; padding: 2px 8px; }
+  .ms-list { max-height: 260px; overflow: auto; }
+  .ms-opt { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 4px; border-radius: 4px; }
+  .ms-opt[hidden] { display: none; }
+  .ms-opt:hover { background: var(--hover); }
+  .ms-opt label { display: flex; gap: 6px; align-items: center; cursor: pointer; flex: 1; min-width: 0; font-size: 13px; }
+  .ms-opt label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ms-only { font-size: 11px; padding: 0 6px; border: 0; background: none; color: var(--accent); visibility: hidden; }
+  .ms-opt:hover .ms-only, .ms-only:focus-visible { visibility: visible; }
+  @media (hover: none) { .ms-only { visibility: visible; } }
   body:not(.has-size) .size-only, body.has-size .no-size-only { display: none !important; }
   .add { color: var(--ok); }
   .del { color: var(--danger); }
@@ -231,11 +256,11 @@
     <div class="filters">
       <div class="field explore-only"><label for="f-from">Desde</label><input type="date" id="f-from"></div>
       <div class="field explore-only"><label for="f-to">Hasta</label><input type="date" id="f-to"></div>
-      <div class="field"><label for="f-author">Autor</label><select id="f-author"></select></div>
-      <div class="field"><label for="f-status">Estado</label><select id="f-status"></select></div>
-      <div class="field"><label for="f-project">Proyecto</label><select id="f-project"></select></div>
-      <div class="field"><label for="f-repo">Repositorio</label><select id="f-repo"></select></div>
-      <div class="field"><label for="f-branch">Rama destino</label><select id="f-branch"></select></div>
+      <div class="field"><label for="f-author-btn">Autor</label><div class="ms" id="f-author"></div></div>
+      <div class="field"><label for="f-status-btn">Estado</label><div class="ms" id="f-status"></div></div>
+      <div class="field"><label for="f-project-btn">Proyecto</label><div class="ms" id="f-project"></div></div>
+      <div class="field"><label for="f-repo-btn">Repositorio</label><div class="ms" id="f-repo"></div></div>
+      <div class="field"><label for="f-branch-btn">Rama destino</label><div class="ms" id="f-branch"></div></div>
       <div class="field"><label for="f-q">Buscar en título</label><input type="search" id="f-q" placeholder="p. ej. UA-5643"></div>
     </div>
     <div class="presets">
@@ -463,9 +488,11 @@
     });
   }
 
-  const ALL = "";
   const FILTER_KEYS = ["from", "to", "author", "status", "project", "repo", "branch", "q"];
-  const DEFAULTS = { from: "", to: "", author: ALL, status: ALL, project: ALL, repo: ALL, branch: ALL, q: "",
+  // Filtros de selección múltiple y su etiqueta para "todos".
+  // En state: null = todos; array = solo esos valores (vacío = ninguno).
+  const MULTI = { author: "Todos", status: "Todos", project: "Todos", repo: "Todos", branch: "Todas" };
+  const DEFAULTS = { from: "", to: "", author: null, status: null, project: null, repo: null, branch: null, q: "",
     group: "author", gran: "month", line: "median", gs: "count", gd: "desc", ds: "created", dd: "desc", page: 1,
     // Vista comparativa
     view: "explore", cmode: "ytd", cut: "", aFrom: "", aTo: "", bFrom: "", bTo: "", cmetric: "cum", as: "b", ad: "desc" };
@@ -521,35 +548,101 @@
 
   const uniq = (rows, k) => [...new Set(rows.map(r => r[k]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
 
-  function fillSelect(select, values, current, allLabel) {
-    select.innerHTML = `<option value="">${allLabel}</option>` +
-      values.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join("");
-    select.value = values.includes(current) ? current : ALL;
-    return select.value;
+  // ---------- Selector múltiple ----------
+  const optionsOf = {}; // opciones disponibles ahora en cada filtro
+  const msUI = {};      // estado visual: abierto, texto de búsqueda, scroll
+  const inSel = (k, v) => state[k] === null || state[k].includes(v);
+
+  function msLabel(k) {
+    const sel = state[k], opts = optionsOf[k] || [];
+    if (sel === null) return MULTI[k];
+    if (!sel.length) return "Ninguno";
+    if (sel.length === 1) return sel[0];
+    const missing = opts.filter(v => !sel.includes(v));
+    if (missing.length <= 2) return `${MULTI[k]} menos ${missing.join(", ")}`;
+    return `${sel.length} de ${opts.length}`;
+  }
+
+  function renderMulti(k) {
+    const box = el[k], opts = optionsOf[k] || [];
+    const ui = msUI[k] || (msUI[k] = { open: false, search: "", scroll: 0 });
+    const prev = box.querySelector(".ms-list");
+    if (prev) ui.scroll = prev.scrollTop;
+    const q = ui.search.toLowerCase();
+    const label = msLabel(k);
+    box.innerHTML = `
+      <button type="button" class="ms-btn" id="f-${k}-btn" aria-haspopup="listbox" aria-expanded="${ui.open}" title="${esc(label)}">
+        <span>${esc(label)}</span><span class="ms-caret">▾</span>
+      </button>
+      <div class="ms-panel" ${ui.open ? "" : "hidden"}>
+        ${opts.length > 8 ? `<input type="search" class="ms-search" placeholder="Buscar…" value="${esc(ui.search)}">` : ""}
+        <div class="ms-actions"><button type="button" data-ms="all">Todos</button><button type="button" data-ms="none">Ninguno</button></div>
+        <div class="ms-list" role="listbox" aria-multiselectable="true">
+          ${opts.map(v => `<div class="ms-opt" data-v="${esc(v)}" ${q && !v.toLowerCase().includes(q) ? "hidden" : ""}>
+            <label><input type="checkbox" ${inSel(k, v) ? "checked" : ""}><span>${esc(v)}</span></label>
+            <button type="button" class="ms-only" data-ms="only" title="Seleccionar solo este">solo</button>
+          </div>`).join("") || '<div class="muted small">Sin opciones</div>'}
+        </div>
+      </div>`;
+    const list = box.querySelector(".ms-list");
+    if (list) list.scrollTop = ui.scroll;
+    if (ui.open) {
+      // Si el panel se sale por la derecha, alinearlo al borde derecho del campo
+      const panel = box.querySelector(".ms-panel");
+      if (panel.getBoundingClientRect().right > document.documentElement.clientWidth - 8) panel.classList.add("right");
+    }
+  }
+
+  function setOptions(k, opts) {
+    optionsOf[k] = opts;
+    const sel = state[k];
+    if (sel !== null && sel.length) {
+      // Quitar valores que ya no existen (p. ej. repos de un proyecto deseleccionado);
+      // si no queda ninguno, o están todos, vuelve a "todos"
+      const kept = sel.filter(v => opts.includes(v));
+      state[k] = !kept.length || (opts.length && opts.every(v => kept.includes(v))) ? null : kept;
+    }
+    renderMulti(k);
+  }
+
+  function setMulti(k, sel) {
+    const opts = optionsOf[k] || [];
+    // Marcar todas equivale a "todos" (así se incluyen también valores nuevos de otro CSV)
+    state[k] = sel !== null && opts.length && opts.every(v => sel.includes(v)) ? null : sel;
+    state.page = 1;
+    render();
+  }
+
+  function openMulti(k) {
+    for (const key of Object.keys(MULTI)) {
+      const ui = msUI[key];
+      if (!ui) continue;
+      const want = key === k;
+      if (ui.open !== want) { ui.open = want; if (!want) ui.search = ""; renderMulti(key); }
+    }
+    if (k) el[k].querySelector(".ms-search")?.focus();
   }
 
   function refreshOptions() {
-    state.author = fillSelect(el.author, uniq(ROWS, "author"), state.author, "Todos");
-    state.status = fillSelect(el.status, uniq(ROWS, "status"), state.status, "Todos");
-    state.project = fillSelect(el.project, uniq(ROWS, "project"), state.project, "Todos");
-    const repoSrc = state.project ? ROWS.filter(r => r.project === state.project) : ROWS;
-    state.repo = fillSelect(el.repo, uniq(repoSrc, "repo"), state.repo, "Todos");
-    const branchSrc = repoSrc.filter(r => !state.repo || r.repo === state.repo);
-    state.branch = fillSelect(el.branch, uniq(branchSrc, "branch"), state.branch, "Todas");
+    setOptions("author", uniq(ROWS, "author"));
+    setOptions("status", uniq(ROWS, "status"));
+    setOptions("project", uniq(ROWS, "project"));
+    const repoSrc = ROWS.filter(r => inSel("project", r.project));
+    setOptions("repo", uniq(repoSrc, "repo"));
+    setOptions("branch", uniq(repoSrc.filter(r => inSel("repo", r.repo)), "branch"));
     el.from.value = state.from; el.to.value = state.to; el.q.value = state.q;
     el.from.min = el.to.min = MIN_DAY; el.from.max = el.to.max = MAX_DAY;
   }
 
   function filtered(useDates = true) {
     const q = state.q.trim().toLowerCase();
+    const sets = Object.fromEntries(Object.keys(MULTI).map(k => [k, state[k] === null ? null : new Set(state[k])]));
+    const ok = (k, v) => !sets[k] || sets[k].has(v);
     return ROWS.filter(r =>
       (!useDates || !state.from || r.day >= state.from) &&
       (!useDates || !state.to || r.day <= state.to) &&
-      (!state.author || r.author === state.author) &&
-      (!state.status || r.status === state.status) &&
-      (!state.project || r.project === state.project) &&
-      (!state.repo || r.repo === state.repo) &&
-      (!state.branch || r.branch === state.branch) &&
+      ok("author", r.author) && ok("status", r.status) && ok("project", r.project) &&
+      ok("repo", r.repo) && ok("branch", r.branch) &&
       (!q || r.titleLC.includes(q) || String(r.id).includes(q))
     );
   }
@@ -557,13 +650,20 @@
   // ---------- URL (#hash) ----------
   function writeHash() {
     const p = new URLSearchParams();
-    for (const k of Object.keys(DEFAULTS)) if (String(state[k]) !== String(DEFAULTS[k])) p.set(k, state[k]);
+    for (const k of Object.keys(DEFAULTS)) {
+      if (k in MULTI) { if (state[k] !== null) p.set(k, state[k].join("|")); }
+      else if (String(state[k]) !== String(DEFAULTS[k])) p.set(k, state[k]);
+    }
     const h = p.toString();
     history.replaceState(null, "", h ? "#" + h : location.pathname + location.search);
   }
   function readHash() {
     const p = new URLSearchParams(location.hash.slice(1));
-    for (const k of Object.keys(DEFAULTS)) if (p.has(k)) state[k] = k === "page" ? Number(p.get(k)) || 1 : p.get(k);
+    for (const k of Object.keys(DEFAULTS)) {
+      if (!p.has(k)) continue;
+      const v = p.get(k);
+      state[k] = k in MULTI ? (v === "" ? [] : v.split("|")) : k === "page" ? Number(v) || 1 : v;
+    }
   }
 
   // ---------- KPIs ----------
@@ -1062,10 +1162,36 @@
   }
 
   // ---------- Eventos ----------
-  for (const k of FILTER_KEYS) {
+  for (const k of ["from", "to", "q"]) {
     const evt = k === "q" ? "input" : "change";
     el[k].addEventListener(evt, () => { state[k] = el[k].value; state.page = 1; render(); });
   }
+  for (const k of Object.keys(MULTI)) {
+    const box = el[k];
+    box.addEventListener("click", e => {
+      if (e.target.closest(".ms-btn")) { openMulti(msUI[k]?.open ? null : k); return; }
+      const act = e.target.closest("[data-ms]")?.dataset.ms;
+      if (act === "all") setMulti(k, null);
+      else if (act === "none") setMulti(k, []);
+      else if (act === "only") setMulti(k, [e.target.closest(".ms-opt").dataset.v]);
+    });
+    box.addEventListener("change", e => {
+      if (!e.target.matches(".ms-opt input")) return;
+      const v = e.target.closest(".ms-opt").dataset.v;
+      const cur = state[k] === null ? [...optionsOf[k]] : [...state[k]];
+      setMulti(k, e.target.checked ? [...cur, v] : cur.filter(x => x !== v));
+    });
+    box.addEventListener("input", e => {
+      if (!e.target.matches(".ms-search")) return;
+      const q = (msUI[k].search = e.target.value).toLowerCase();
+      box.querySelectorAll(".ms-opt").forEach(o => { o.hidden = !!q && !o.dataset.v.toLowerCase().includes(q); });
+    });
+  }
+  // Cerrar al hacer clic fuera (composedPath: el panel se redibuja y el destino puede quedar fuera del DOM)
+  document.addEventListener("click", e => {
+    if (!e.composedPath().some(n => n.classList && n.classList.contains("ms"))) openMulti(null);
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") openMulti(null); });
   document.querySelectorAll("[data-preset]").forEach(b => b.addEventListener("click", () => {
     const p = b.dataset.preset;
     if (p === "all") { state.from = ""; state.to = ""; }
@@ -1130,9 +1256,9 @@
       state.from = `${v}-01`;
       state.to = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
     } else {
-      state[state.group] = v === "(vacío)" ? ALL : v;
+      state[state.group] = v === "(vacío)" ? null : [v];
       if (state.group === "repo") {
-        const r = ROWS.find(x => x.repo === v); if (r) state.project = r.project;
+        const r = ROWS.find(x => x.repo === v); if (r) state.project = [r.project];
       }
     }
     state.page = 1; render();
