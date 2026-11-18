@@ -5,7 +5,8 @@ Web estática (sin dependencias ni servidor) para explorar el CSV de métricas d
 ## Exportar datos desde Azure DevOps
 
 `export/ExportPullRequests.cs` genera `PullRequests_Metrics.csv` con las PRs y, para cada una, nº de commits,
-archivos cambiados y líneas añadidas/borradas (sin contar archivos generados). Requiere **.NET 10**.
+archivos cambiados y líneas añadidas/borradas (sin contar archivos generados). Requiere el SDK de **.NET 10 o superior**
+(se ejecuta como app de un solo archivo, sin proyecto). Comprueba la versión con `dotnet --version`.
 
 1. Crea un PAT en Azure DevOps con alcance **Code > Read**.
 2. Copia `export/config.example.json` a `export/config.json` (ignorado por git) y rellena organización,
@@ -16,6 +17,9 @@ archivos cambiados y líneas añadidas/borradas (sin contar archivos generados).
    export AZDO_PAT=xxxxxxxx
    dotnet run export/ExportPullRequests.cs
    ```
+
+El `nuget.config` de la raíz limita la restauración a nuget.org, para que no intente usar feeds privados
+configurados en tu equipo (si no, puede fallar con `NU1301 … 401 (Unauthorized)`).
 
 Los detalles de cada PR se guardan en `export/.cache/` (ignorado por git): las siguientes ejecuciones solo
 consultan las PRs nuevas o activas. Si cambias `excludePatterns`, se recalcula todo.

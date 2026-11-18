@@ -1,7 +1,8 @@
 #!/usr/bin/env dotnet
+#:property PublishAot=false
 // Exporta métricas de Pull Requests de Azure DevOps a CSV (para la web de pr-reviewer).
 //
-// Uso (desde la raíz del repo, requiere .NET 10):
+// Uso (desde la raíz del repo, requiere .NET 10 o superior):
 //   export AZDO_PAT=xxxxxxxx
 //   dotnet run export/ExportPullRequests.cs [ruta/config.json]
 //
